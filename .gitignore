@@ -1,0 +1,7 @@
+node_modules/
+*.js.map
+package-lock.json
+test-results.xml
+*.bat
+bin/
+obj/
