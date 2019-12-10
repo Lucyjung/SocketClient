@@ -42,12 +42,13 @@ namespace Receiver
         {
             hostStatus = PingHost("localhost", 8181);
             string hostname = Dns.GetHostName();
-            Send(client, hostname + "," + hostStatus.ToString() + "," + "<EOF>");
-            
+            StartClient(hostname + "," + hostStatus.ToString() + "<EOF>");
+
         }
         private void Button1_Click(object sender, EventArgs e)
         {
             label1.Text = "Waiting for a connection...";
+            
             aTimer.Interval = 10 * 1000;
 
             // Have the timer fire repeated events (true is the default)
@@ -55,7 +56,7 @@ namespace Receiver
 
             // Start the timer
             aTimer.Enabled = true;
-            StartClient();
+            
         }
         private void StartListening()
         {
@@ -153,7 +154,7 @@ namespace Receiver
             Console.WriteLine("ExitCode: {0}", process.ExitCode);
             process.Close();
         }
-        private static void StartClient()
+        private static void StartClient(string msg)
         {
             // Connect to a remote device.  
             try
@@ -161,7 +162,7 @@ namespace Receiver
                 // Establish the remote endpoint for the socket.  
                 // The name of the   
                 // remote device is "host.contoso.com".  
-                IPHostEntry ipHostInfo = Dns.GetHostEntry("ITNB614480.pttdigital.corp");
+                IPHostEntry ipHostInfo = Dns.GetHostEntry(Dns.GetHostName());
                 IPAddress ipAddress = ipHostInfo.AddressList[0];
                 IPEndPoint remoteEP = new IPEndPoint(ipAddress, port);
 
@@ -173,7 +174,7 @@ namespace Receiver
                 client.BeginConnect(remoteEP,
                     new AsyncCallback(ConnectCallback), client);
                 connectDone.WaitOne();
-
+                Send(client, msg);
 
                 // Receive the response from the remote device.  
                 Receive(client);
