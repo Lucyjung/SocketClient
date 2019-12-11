@@ -31,24 +31,14 @@ namespace Receiver
         private static Socket client;
         // The response from the remote device.  
         private static String response = String.Empty;
+        private static bool mailSent = false;
+        private static string[] APP_STATE = { "Start", "Running" };
         public Form1()
         {
             InitializeComponent();
             aTimer = new System.Timers.Timer();
             // Hook up the Elapsed event for the timer. 
             aTimer.Elapsed += OnTimedEvent;
-        }
-        private void OnTimedEvent(Object source, System.Timers.ElapsedEventArgs e)
-        {
-            hostStatus = PingHost("localhost", 8181);
-            string hostname = Dns.GetHostName();
-            StartClient(hostname + "," + hostStatus.ToString() + "<EOF>");
-
-        }
-        private void Button1_Click(object sender, EventArgs e)
-        {
-            label1.Text = "Waiting for a connection...";
-            
             aTimer.Interval = 10 * 1000;
 
             // Have the timer fire repeated events (true is the default)
@@ -56,9 +46,48 @@ namespace Receiver
 
             // Start the timer
             aTimer.Enabled = true;
-            
+
         }
-        private void StartListening()
+        private static void OnTimedEvent(Object source, System.Timers.ElapsedEventArgs e)
+        {
+            int port = 8181;
+            hostStatus = PingHost("localhost", port);
+            string hostname = Dns.GetHostName();
+            if (hostStatus == false && mailSent == false)
+            {
+                mailSent = true;
+                ExecuteCommand("StartAutomate.bat");
+                //sendEmail("sirapop.p@pttdigital.com", "test sbuject", "test body");
+                
+            }
+            else if (hostStatus)
+            {
+                mailSent = false;
+            }
+            StartClient(hostname + "," + port.ToString() + ","+ hostStatus.ToString() + "<EOF>");
+
+        }
+        private void Button1_Click(object sender, EventArgs e)
+        {
+            label1.Text = "Waiting for a connection...";
+            if (button1.Text == APP_STATE[0])
+            {
+                button1.Text = APP_STATE[1];
+                aTimer.Interval = 10 * 1000;
+
+                // Have the timer fire repeated events (true is the default)
+                aTimer.AutoReset = true;
+
+                // Start the timer
+                aTimer.Enabled = true;
+            }
+            else
+            {
+                button1.Text = APP_STATE[0];
+                aTimer.Enabled = false;
+            }
+        }
+        private static void StartListening()
         {
             // Data buffer for incoming data.  
             byte[] bytes = new Byte[1024];
@@ -122,7 +151,7 @@ namespace Receiver
 
 
         }
-        private void commandHandler(string cmd)
+        private static void commandHandler(string cmd)
         {
             if (cmd.IndexOf("runBatch") > -1)
             {
@@ -162,7 +191,7 @@ namespace Receiver
                 // Establish the remote endpoint for the socket.  
                 // The name of the   
                 // remote device is "host.contoso.com".  
-                IPHostEntry ipHostInfo = Dns.GetHostEntry(Dns.GetHostName());
+                IPHostEntry ipHostInfo = Dns.GetHostEntry("ITNB614480.pttdigital.corp");
                 IPAddress ipAddress = ipHostInfo.AddressList[0];
                 IPEndPoint remoteEP = new IPEndPoint(ipAddress, port);
 
@@ -260,6 +289,7 @@ namespace Receiver
                         response = state.sb.ToString();
                     }
                     // Signal that all bytes have been received.  
+                    commandHandler(response);
                     receiveDone.Set();
                 }
             }
@@ -308,6 +338,39 @@ namespace Receiver
             catch (SocketException ex)
             {
                 return false;
+            }
+        }
+        private static void sendEmail(string to, string subject, string body)
+        {
+            using (SmtpClient smtpClient = new SmtpClient())
+            {
+                using (MailMessage message = new MailMessage())
+                {
+                    MailAddress fromAddress = new MailAddress("narut.tr@pttdigital.com");
+
+                    smtpClient.Host = "smtp.office365.com";
+                    smtpClient.Port = 587;
+                    smtpClient.UseDefaultCredentials = false;
+                    smtpClient.EnableSsl = true;
+                    smtpClient.Credentials = new System.Net.NetworkCredential("narut.tr@pttdigital.com", "lujlk,g0Hf1");
+                    smtpClient.DeliveryMethod = SmtpDeliveryMethod.Network;
+                    message.From = fromAddress;
+                    message.Subject = subject;
+                    // Set IsBodyHtml to true means you can send HTML email.
+                    message.IsBodyHtml = true;
+                    message.Body = body;
+                    message.To.Add(to);
+
+                    try
+                    {
+                        smtpClient.Send(message);
+                    }
+                    catch (Exception ex)
+                    {
+                        //Error, could not send the message
+                        MessageBox.Show(ex.Message);
+                    }
+                }
             }
         }
 
