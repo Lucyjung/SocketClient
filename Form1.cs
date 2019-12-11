@@ -12,6 +12,7 @@ using System.Net.Mail;
 using System.Net;
 using System.Diagnostics;
 using System.Threading;
+using System.Configuration;
 
 namespace Receiver
 {
@@ -33,31 +34,59 @@ namespace Receiver
         private static String response = String.Empty;
         private static bool mailSent = false;
         private static string[] APP_STATE = { "Start", "Running" };
+        private static Config config = new Config();
         public Form1()
         {
             InitializeComponent();
+            GetConfigurationValue();
             aTimer = new System.Timers.Timer();
             // Hook up the Elapsed event for the timer. 
             aTimer.Elapsed += OnTimedEvent;
-            aTimer.Interval = 10 * 1000;
+            aTimer.Interval = config.interval * 1000;
 
             // Have the timer fire repeated events (true is the default)
             aTimer.AutoReset = true;
 
             // Start the timer
             aTimer.Enabled = true;
+            button1.Text = APP_STATE[1];
 
+        }
+        public static void GetConfigurationValue()
+        {
+            try
+            {
+                var interval = ConfigurationManager.AppSettings["Interval"];
+                config.interval = Int32.Parse(interval);
+                var SendEmail = ConfigurationManager.AppSettings["SendEmail"];
+                config.sendEmail = SendEmail == "1";
+                var portToCheck = ConfigurationManager.AppSettings["portToCheck"];
+                config.portToCheck = Int32.Parse(portToCheck);
+                var socketServerAddr = ConfigurationManager.AppSettings["socketServerAddr"];
+                config.serverAddr = socketServerAddr;
+                var emailUser = ConfigurationManager.AppSettings["emailUser"];
+                config.emailUser = emailUser;
+                var batchFileName = ConfigurationManager.AppSettings["batchFileName"];
+                config.batchFileName = batchFileName;
+                var emailSendTo = ConfigurationManager.AppSettings["emailSendTo"];
+                config.emailSendTo = emailSendTo;
+
+            } catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+            }
+            
         }
         private static void OnTimedEvent(Object source, System.Timers.ElapsedEventArgs e)
         {
-            int port = 8181;
+            int port = config.portToCheck;
             hostStatus = PingHost("localhost", port);
             string hostname = Dns.GetHostName();
             if (hostStatus == false && mailSent == false)
             {
                 mailSent = true;
-                ExecuteCommand("StartAutomate.bat");
-                //sendEmail("sirapop.p@pttdigital.com", "test sbuject", "test body");
+                ExecuteCommand(config.batchFileName);
+                sendEmail(config.emailSendTo, "test sbuject", "test body");
                 
             }
             else if (hostStatus)
@@ -69,11 +98,10 @@ namespace Receiver
         }
         private void Button1_Click(object sender, EventArgs e)
         {
-            label1.Text = "Waiting for a connection...";
             if (button1.Text == APP_STATE[0])
             {
                 button1.Text = APP_STATE[1];
-                aTimer.Interval = 10 * 1000;
+                aTimer.Interval = config.interval * 1000;
 
                 // Have the timer fire repeated events (true is the default)
                 aTimer.AutoReset = true;
@@ -191,7 +219,7 @@ namespace Receiver
                 // Establish the remote endpoint for the socket.  
                 // The name of the   
                 // remote device is "host.contoso.com".  
-                IPHostEntry ipHostInfo = Dns.GetHostEntry("ITNB614480.pttdigital.corp");
+                IPHostEntry ipHostInfo = Dns.GetHostEntry(config.serverAddr);
                 IPAddress ipAddress = ipHostInfo.AddressList[0];
                 IPEndPoint remoteEP = new IPEndPoint(ipAddress, port);
 
@@ -342,38 +370,46 @@ namespace Receiver
         }
         private static void sendEmail(string to, string subject, string body)
         {
-            using (SmtpClient smtpClient = new SmtpClient())
+            if (config.sendEmail)
             {
-                using (MailMessage message = new MailMessage())
+                using (SmtpClient smtpClient = new SmtpClient())
                 {
-                    MailAddress fromAddress = new MailAddress("narut.tr@pttdigital.com");
-
-                    smtpClient.Host = "smtp.office365.com";
-                    smtpClient.Port = 587;
-                    smtpClient.UseDefaultCredentials = false;
-                    smtpClient.EnableSsl = true;
-                    smtpClient.Credentials = new System.Net.NetworkCredential("narut.tr@pttdigital.com", "lujlk,g0Hf1");
-                    smtpClient.DeliveryMethod = SmtpDeliveryMethod.Network;
-                    message.From = fromAddress;
-                    message.Subject = subject;
-                    // Set IsBodyHtml to true means you can send HTML email.
-                    message.IsBodyHtml = true;
-                    message.Body = body;
-                    message.To.Add(to);
-
-                    try
+                    using (MailMessage message = new MailMessage())
                     {
-                        smtpClient.Send(message);
-                    }
-                    catch (Exception ex)
-                    {
-                        //Error, could not send the message
-                        MessageBox.Show(ex.Message);
+                        MailAddress fromAddress = new MailAddress(config.emailUser);
+
+                        smtpClient.Host = "smtp.office365.com";
+                        smtpClient.Port = 587;
+                        smtpClient.UseDefaultCredentials = false;
+                        smtpClient.EnableSsl = true;
+                        smtpClient.Credentials = new System.Net.NetworkCredential(config.emailUser, config.emailPass);
+                        smtpClient.DeliveryMethod = SmtpDeliveryMethod.Network;
+                        message.From = fromAddress;
+                        message.Subject = subject;
+                        // Set IsBodyHtml to true means you can send HTML email.
+                        message.IsBodyHtml = true;
+                        message.Body = body;
+                        message.To.Add(to);
+
+                        try
+                        {
+                            smtpClient.Send(message);
+                        }
+                        catch (Exception ex)
+                        {
+                            //Error, could not send the message
+                            MessageBox.Show(ex.Message);
+                        }
                     }
                 }
             }
+            
         }
 
+        private void label1_Click(object sender, EventArgs e)
+        {
+
+        }
     }
     // State object for receiving data from remote device.  
     public class StateObject
@@ -386,5 +422,16 @@ namespace Receiver
         public byte[] buffer = new byte[BufferSize];
         // Received data string.  
         public StringBuilder sb = new StringBuilder();
+    }
+    public class Config
+    {
+        public int interval;
+        public bool sendEmail;
+        public int portToCheck;
+        public string serverAddr;
+        public string emailUser;
+        public string emailPass;
+        public string batchFileName;
+        public string emailSendTo;
     }
 }

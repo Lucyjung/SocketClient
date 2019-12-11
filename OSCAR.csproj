@@ -7,7 +7,7 @@
     <ProjectGuid>{AB4516F3-76BD-4057-9811-6D97EAB0EDCA}</ProjectGuid>
     <OutputType>WinExe</OutputType>
     <RootNamespace>Receiver</RootNamespace>
-    <AssemblyName>Receiver</AssemblyName>
+    <AssemblyName>OSCAR</AssemblyName>
     <TargetFrameworkVersion>v4.5.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
@@ -34,6 +34,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
+    <Reference Include="System.Configuration" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
