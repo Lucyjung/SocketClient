@@ -35,6 +35,7 @@ namespace Receiver
         private static bool mailSent = false;
         private static string[] APP_STATE = { "Start", "Running" };
         private static Config config = new Config();
+
         public Form1()
         {
             InitializeComponent();
@@ -50,7 +51,6 @@ namespace Receiver
             // Start the timer
             aTimer.Enabled = true;
             button1.Text = APP_STATE[1];
-
         }
         public static void GetConfigurationValue()
         {
@@ -95,6 +95,24 @@ namespace Receiver
             }
             StartClient(hostname + "," + port.ToString() + ","+ hostStatus.ToString() + "<EOF>");
 
+        }
+        private void Form1_Resize(object sender, EventArgs e)
+        {
+
+            if (FormWindowState.Minimized == this.WindowState)
+            {
+                notifyIcon1.Visible = true;
+                this.Hide();
+            }
+            else if (FormWindowState.Normal == this.WindowState)
+            {
+                notifyIcon1.Visible = false;
+            }
+        }
+        private void notifyIcon1_MouseDoubleClick(object sender, MouseEventArgs e)
+        {
+            this.Show();
+            this.WindowState = FormWindowState.Normal;
         }
         private void Button1_Click(object sender, EventArgs e)
         {
