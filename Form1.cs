@@ -41,6 +41,7 @@ namespace Receiver
             InitializeComponent();
             GetConfigurationValue();
             aTimer = new System.Timers.Timer();
+
             // Hook up the Elapsed event for the timer. 
             aTimer.Elapsed += OnTimedEvent;
             aTimer.Interval = config.interval * 1000;
@@ -48,9 +49,17 @@ namespace Receiver
             // Have the timer fire repeated events (true is the default)
             aTimer.AutoReset = true;
 
+            Process[] pname = Process.GetProcessesByName(config.targetExe);
+            if (pname.Length == 0)
+            {
+                ExecuteCommand(config.batchFileName);
+            }
+
             // Start the timer
             aTimer.Enabled = true;
             button1.Text = APP_STATE[1];
+
+            
         }
         public static void GetConfigurationValue()
         {
@@ -70,6 +79,8 @@ namespace Receiver
                 config.batchFileName = batchFileName;
                 var emailSendTo = ConfigurationManager.AppSettings["emailSendTo"];
                 config.emailSendTo = emailSendTo;
+                var targetExe = ConfigurationManager.AppSettings["targetExe"];
+                config.targetExe = targetExe;
 
             } catch (Exception ex)
             {
@@ -451,5 +462,6 @@ namespace Receiver
         public string emailPass;
         public string batchFileName;
         public string emailSendTo;
+        public string targetExe;
     }
 }
