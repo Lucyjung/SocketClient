@@ -1,18 +1,14 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
-using System.Net.Sockets;
 using System.Net.Mail;
 using System.Net;
 using System.Diagnostics;
-using System.Threading;
 using System.Configuration;
+using System.Net.Sockets;
+using System.IO;
+using Newtonsoft.Json;
+using System.Net.Http;
 
 namespace Receiver
 {
@@ -21,25 +17,20 @@ namespace Receiver
         public static string data = null;
         private const int port = 11000;
         private static System.Timers.Timer aTimer;
-        // ManualResetEvent instances signal completion.  
-        private static ManualResetEvent connectDone =
-            new ManualResetEvent(false);
-        private static ManualResetEvent sendDone =
-            new ManualResetEvent(false);
-        private static ManualResetEvent receiveDone =
-            new ManualResetEvent(false);
         public static bool hostStatus = false;
-        private static Socket client;
         // The response from the remote device.  
         private static String response = String.Empty;
         private static bool mailSent = false;
         private static string[] APP_STATE = { "Start", "Running" };
         private static Config config = new Config();
+        private static int restCount = 0;
 
         public Form1()
         {
             InitializeComponent();
             GetConfigurationValue();
+
+            // Timer Init 
             aTimer = new System.Timers.Timer();
 
             // Hook up the Elapsed event for the timer. 
@@ -48,18 +39,21 @@ namespace Receiver
 
             // Have the timer fire repeated events (true is the default)
             aTimer.AutoReset = true;
-
+            WriteToFile("Start Oscar");
             Process[] pname = Process.GetProcessesByName(config.targetExe);
             if (pname.Length == 0)
             {
+                WriteToFile("Execute First Command");
                 ExecuteCommand(config.batchFileName);
             }
 
             // Start the timer
             aTimer.Enabled = true;
             button1.Text = APP_STATE[1];
+            //ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls12;
 
-            
+
+
         }
         public static void GetConfigurationValue()
         {
@@ -93,9 +87,11 @@ namespace Receiver
             int port = config.portToCheck;
             hostStatus = PingHost("localhost", port);
             string hostname = Dns.GetHostName();
+            
             if (hostStatus == false && mailSent == false)
             {
                 mailSent = true;
+                killTaskIfNotResponse(config.targetExe);
                 ExecuteCommand(config.batchFileName);
                 sendEmail(config.emailSendTo, "test sbuject", "test body");
                 
@@ -104,7 +100,24 @@ namespace Receiver
             {
                 mailSent = false;
             }
-            StartClient(hostname + "," + port.ToString() + ","+ hostStatus.ToString() + "<EOF>");
+            WriteToFile("Check Status : " + hostStatus.ToString());
+            // StartClient(hostname + "," + port.ToString() + ","+ hostStatus.ToString() + "<EOF>");
+            if (restCount > 10)
+            {
+                LogData logObj = new LogData();
+                logObj.hostName = hostname;
+                logObj.status = hostStatus.ToString();
+                logObj.timestamps = (Int32)(DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1))).TotalSeconds;
+                string logData = JsonConvert.SerializeObject(logObj);
+                WriteToFile("Log Status to Server ");
+                _ = CurlRequestAsync("https://oscar-demo.azurewebsites.net/oscar/log", "POST", logData);
+                restCount = 0;
+            }
+            else
+            {
+                restCount++;
+            }
+            
 
         }
         private void Form1_Resize(object sender, EventArgs e)
@@ -137,6 +150,8 @@ namespace Receiver
 
                 // Start the timer
                 aTimer.Enabled = true;
+
+                mailSent = false;
             }
             else
             {
@@ -144,70 +159,7 @@ namespace Receiver
                 aTimer.Enabled = false;
             }
         }
-        private static void StartListening()
-        {
-            // Data buffer for incoming data.  
-            byte[] bytes = new Byte[1024];
 
-            // Establish the local endpoint for the socket.  
-            // Dns.GetHostName returns the name of the   
-            // host running the application.  
-            IPHostEntry ipHostInfo = Dns.GetHostEntry(Dns.GetHostName());
-            IPAddress ipAddress = ipHostInfo.AddressList[0];
-            IPEndPoint localEndPoint = new IPEndPoint(ipAddress, 11000);
-
-            // Create a TCP/IP socket.  
-            Socket listener = new Socket(ipAddress.AddressFamily,
-                SocketType.Stream, ProtocolType.Tcp);
-
-            // Bind the socket to the local endpoint and   
-            // listen for incoming connections.  
-            try
-            {
-                listener.Bind(localEndPoint);
-                listener.Listen(10);
-
-                // Start listening for connections.  
-                while (true)
-                {
-                    
-                    Console.WriteLine("Waiting for a connection...");
-                    // Program is suspended while waiting for an incoming connection.  
-                    Socket handler = listener.Accept();
-                    data = null;
-
-                    // An incoming connection needs to be processed.  
-                    while (true)
-                    {
-                        int bytesRec = handler.Receive(bytes);
-                        data += Encoding.ASCII.GetString(bytes, 0, bytesRec);
-                        if (data.IndexOf("<EOF>") > -1)
-                        {
-                            data = data.Substring(0, data.Length - 5);
-                            break;
-                        }
-                    }
-
-                    // Show the data on the console.  
-                    //Console.WriteLine("Text received : {0}", data);
-                    MessageBox.Show("Text received :" + data);
-                    commandHandler(data);
-                    // Echo the data back to the client.  
-                    byte[] msg = Encoding.ASCII.GetBytes(data);
-
-                    handler.Send(msg);
-                    handler.Shutdown(SocketShutdown.Both);
-                    handler.Close();
-                }
-
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.ToString());
-            }
-
-
-        }
         private static void commandHandler(string cmd)
         {
             if (cmd.IndexOf("runBatch") > -1)
@@ -219,6 +171,7 @@ namespace Receiver
         }
         static void ExecuteCommand(string command)
         {
+            
             var processInfo = new ProcessStartInfo("cmd.exe", "/c " + command);
             processInfo.CreateNoWindow = true;
             processInfo.UseShellExecute = false;
@@ -227,163 +180,9 @@ namespace Receiver
 
             var process = Process.Start(processInfo);
 
-            process.OutputDataReceived += (object sender, DataReceivedEventArgs e) =>
-                Console.WriteLine("output>>" + e.Data);
-            process.BeginOutputReadLine();
-
-            process.ErrorDataReceived += (object sender, DataReceivedEventArgs e) =>
-                Console.WriteLine("error>>" + e.Data);
-            process.BeginErrorReadLine();
-
             process.WaitForExit();
 
-            Console.WriteLine("ExitCode: {0}", process.ExitCode);
             process.Close();
-        }
-        private static void StartClient(string msg)
-        {
-            // Connect to a remote device.  
-            try
-            {
-                // Establish the remote endpoint for the socket.  
-                // The name of the   
-                // remote device is "host.contoso.com".  
-                IPHostEntry ipHostInfo = Dns.GetHostEntry(config.serverAddr);
-                IPAddress ipAddress = ipHostInfo.AddressList[0];
-                IPEndPoint remoteEP = new IPEndPoint(ipAddress, port);
-
-                // Create a TCP/IP socket.  
-                client = new Socket(ipAddress.AddressFamily,
-                    SocketType.Stream, ProtocolType.Tcp);
-
-                // Connect to the remote endpoint.  
-                client.BeginConnect(remoteEP,
-                    new AsyncCallback(ConnectCallback), client);
-                connectDone.WaitOne();
-                Send(client, msg);
-
-                // Receive the response from the remote device.  
-                Receive(client);
-
-
-                // Release the socket.  
-                // client.Shutdown(SocketShutdown.Both);
-                // client.Close();
-
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.ToString());
-            }
-        }
-
-        private static void ConnectCallback(IAsyncResult ar)
-        {
-            try
-            {
-                // Retrieve the socket from the state object.  
-                Socket client = (Socket)ar.AsyncState;
-
-                // Complete the connection.  
-                client.EndConnect(ar);
-
-                Console.WriteLine("Socket connected to {0}",
-                    client.RemoteEndPoint.ToString());
-
-                // Signal that the connection has been made.  
-                connectDone.Set();
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.ToString());
-            }
-        }
-
-        private static void Receive(Socket client)
-        {
-            try
-            {
-                // Create the state object.  
-                StateObject state = new StateObject();
-                state.workSocket = client;
-
-                // Begin receiving the data from the remote device.  
-                client.BeginReceive(state.buffer, 0, StateObject.BufferSize, 0,
-                    new AsyncCallback(ReceiveCallback), state);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.ToString());
-            }
-        }
-
-        private static void ReceiveCallback(IAsyncResult ar)
-        {
-            try
-            {
-                // Retrieve the state object and the client socket   
-                // from the asynchronous state object.  
-                StateObject state = (StateObject)ar.AsyncState;
-                Socket client = state.workSocket;
-
-                // Read data from the remote device.  
-                int bytesRead = client.EndReceive(ar);
-
-                if (bytesRead > 0)
-                {
-                    // There might be more data, so store the data received so far.  
-                    state.sb.Append(Encoding.ASCII.GetString(state.buffer, 0, bytesRead));
-
-                    // Get the rest of the data.  
-                    client.BeginReceive(state.buffer, 0, StateObject.BufferSize, 0,
-                        new AsyncCallback(ReceiveCallback), state);
-                }
-                else
-                {
-                    // All the data has arrived; put it in response.  
-                    if (state.sb.Length > 1)
-                    {
-                        response = state.sb.ToString();
-                    }
-                    // Signal that all bytes have been received.  
-                    commandHandler(response);
-                    receiveDone.Set();
-                }
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.ToString());
-            }
-        }
-
-        private static void Send(Socket client, String data)
-        {
-            // Convert the string data to byte data using ASCII encoding.  
-            byte[] byteData = Encoding.ASCII.GetBytes(data);
-
-            // Begin sending the data to the remote device.  
-            client.BeginSend(byteData, 0, byteData.Length, 0,
-                new AsyncCallback(SendCallback), client);
-        }
-
-        private static void SendCallback(IAsyncResult ar)
-        {
-            try
-            {
-                // Retrieve the socket from the state object.  
-                Socket client = (Socket)ar.AsyncState;
-
-                // Complete sending the data to the remote device.  
-                int bytesSent = client.EndSend(ar);
-                Console.WriteLine("Sent {0} bytes to server.", bytesSent);
-
-                // Signal that all bytes have been sent.  
-                sendDone.Set();
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.ToString());
-            }
         }
         public static bool PingHost(string hostUri, int portNumber)
         {
@@ -423,21 +222,133 @@ namespace Receiver
                         try
                         {
                             smtpClient.Send(message);
+                            WriteToFile("Email Sent");
                         }
                         catch (Exception ex)
                         {
                             //Error, could not send the message
-                            MessageBox.Show(ex.Message);
+                            WriteToFile("Error : " + ex.Message);
                         }
                     }
                 }
             }
             
         }
+        private static void killTaskIfNotResponse(string name)
+        {
+            Process[] pname = Process.GetProcessesByName(name);
+            if (pname.Length > 0)
+            {
+                foreach (Process pr in pname)
+                {
+                    if (!pr.Responding)
+                    {
+                        try
+                        {
+                            pr.Kill();
+                        }
+                        catch { }
+                    }
+                }
+            }
+        }
+        public static string Request(string URL, string method, string DATA = null, string user = null, string password = null)
+        {
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(URL);
+            request.Method = method;
+            request.ContentType = "application/json";
+            request.KeepAlive = false;
+            if (user != null && password != null)
+            {
+                String encoded = System.Convert.ToBase64String(System.Text.Encoding.GetEncoding("ISO-8859-1").GetBytes(user + ":" + password));
+                request.Headers.Add("Authorization", "Basic " + encoded);
+            }
+            if (DATA != null)
+            {
+                byte[] byteArray = Encoding.UTF8.GetBytes(DATA);
+                request.ContentLength = byteArray.Length;
+                using (Stream webStream = request.GetRequestStream())
+                {
+                    webStream.Write(byteArray, 0, byteArray.Length); // Send the data.
+                    webStream.Close();
+                }
 
+            }
+
+            try
+            {
+                WebResponse webResponse = request.GetResponse();
+                using (Stream webStream = webResponse.GetResponseStream() ?? Stream.Null)
+                using (StreamReader responseReader = new StreamReader(webStream))
+                {
+                    string response = responseReader.ReadToEnd();
+                    return response;
+                }
+            }
+            catch (Exception e)
+            {
+                WriteToFile("-----------------");
+                WriteToFile(e.Message);
+                return null;
+            }
+        }
+        protected static async System.Threading.Tasks.Task<HttpResponseMessage> CurlRequestAsync(string url, string method, string DATA = null, string user = null, string password = null)
+        {
+            ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls12;
+            try
+            {
+                using (var httpClient = new HttpClient())
+                {
+                    using (var request = new HttpRequestMessage(new HttpMethod(method), url))
+                    {
+                        if (user != null && password != null) { 
+                            var base64authorization = Convert.ToBase64String(Encoding.ASCII.GetBytes(user + ":" + password));
+                            request.Headers.TryAddWithoutValidation("Authorization", $"Basic {base64authorization}");
+                        }
+                        if (DATA != null)
+                        {
+                            request.Content = new StringContent(DATA, Encoding.UTF8, "application/json");
+                        }
+                        var result = await httpClient.SendAsync(request);
+                        WriteToFile("Server Respond");
+                        return result;
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                WriteToFile("-----------------");
+                WriteToFile(e.Message);
+                return null;
+            }
+        }
         private void label1_Click(object sender, EventArgs e)
         {
 
+        }
+        private static void WriteToFile(string Message)
+        {
+            string path = AppDomain.CurrentDomain.BaseDirectory + "\\Logs";
+            if (!Directory.Exists(path))
+            {
+                Directory.CreateDirectory(path);
+            }
+            string filepath = AppDomain.CurrentDomain.BaseDirectory + "\\Logs\\ServiceLog_" + DateTime.Now.Date.ToShortDateString().Replace('/', '_') + ".txt";
+            if (!File.Exists(filepath))
+            {
+                // Create a file to write to.   
+                using (StreamWriter sw = File.CreateText(filepath))
+                {
+                    sw.WriteLine(DateTime.Now.ToString() + " : " + Message);
+                }
+            }
+            else
+            {
+                using (StreamWriter sw = File.AppendText(filepath))
+                {
+                    sw.WriteLine(DateTime.Now.ToString() + " : " + Message);
+                }
+            }
         }
     }
     // State object for receiving data from remote device.  
@@ -463,5 +374,11 @@ namespace Receiver
         public string batchFileName;
         public string emailSendTo;
         public string targetExe;
+    }
+    public class LogData
+    {
+        public string hostName;
+        public string status;
+        public int timestamps;
     }
 }
