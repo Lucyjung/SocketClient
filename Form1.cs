@@ -15,16 +15,12 @@ namespace Receiver
     public partial class Form1 : Form
     {
         public static string data = null;
-        private const int port = 11000;
         private static System.Timers.Timer aTimer;
         public static bool hostStatus = false;
-        // The response from the remote device.  
-        private static String response = String.Empty;
-        private static bool mailSent = false;
         private static string[] APP_STATE = { "Start", "Running" };
         private static Config config = new Config();
         private static int restCount = 0;
-
+        private static int statusCount = 0;
         public Form1()
         {
             InitializeComponent();
@@ -88,34 +84,34 @@ namespace Receiver
             hostStatus = PingHost("localhost", port);
             string hostname = Dns.GetHostName();
             
-            if (hostStatus == false && mailSent == false)
+            if (hostStatus == false)
             {
-                mailSent = true;
-                killTaskIfNotResponse(config.targetExe);
+                killTask(config.targetExe);
                 ExecuteCommand(config.batchFileName);
-                sendEmail(config.emailSendTo, "test sbuject", "test body");
-                
-            }
-            else if (hostStatus)
-            {
-                mailSent = false;
+                // sendEmail(config.emailSendTo, "test sbuject", "test body");
             }
             WriteToFile("Check Status : " + hostStatus.ToString());
             // StartClient(hostname + "," + port.ToString() + ","+ hostStatus.ToString() + "<EOF>");
-            if (restCount > 10)
+            if (restCount > 9)
             {
                 LogData logObj = new LogData();
                 logObj.hostName = hostname;
                 logObj.status = hostStatus.ToString();
                 logObj.timestamps = (Int32)(DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1))).TotalSeconds;
+                logObj.statusCount = statusCount;
                 string logData = JsonConvert.SerializeObject(logObj);
                 WriteToFile("Log Status to Server ");
                 _ = CurlRequestAsync("https://oscar-demo.azurewebsites.net/oscar/log", "POST", logData);
                 restCount = 0;
+                statusCount = 0;
             }
             else
             {
                 restCount++;
+                if (hostStatus)
+                {
+                    statusCount += restCount;
+                }
             }
             
 
@@ -151,7 +147,6 @@ namespace Receiver
                 // Start the timer
                 aTimer.Enabled = true;
 
-                mailSent = false;
             }
             else
             {
@@ -234,21 +229,18 @@ namespace Receiver
             }
             
         }
-        private static void killTaskIfNotResponse(string name)
+        private static void killTask(string name)
         {
             Process[] pname = Process.GetProcessesByName(name);
             if (pname.Length > 0)
             {
                 foreach (Process pr in pname)
                 {
-                    if (!pr.Responding)
+                    try
                     {
-                        try
-                        {
-                            pr.Kill();
-                        }
-                        catch { }
+                        pr.Kill();
                     }
+                    catch { }
                 }
             }
         }
@@ -380,5 +372,6 @@ namespace Receiver
         public string hostName;
         public string status;
         public int timestamps;
+        public int statusCount;
     }
 }
