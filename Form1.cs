@@ -92,7 +92,7 @@ namespace Receiver
             }
             WriteToFile("Check Status : " + hostStatus.ToString());
             // StartClient(hostname + "," + port.ToString() + ","+ hostStatus.ToString() + "<EOF>");
-            if (restCount > 9)
+            if (restCount >= 12)
             {
                 LogData logObj = new LogData();
                 logObj.hostName = hostname;
@@ -105,7 +105,6 @@ namespace Receiver
                 restCount = 0;
                 statusCount = 0;
             }
-            else
             {
                 restCount++;
                 if (hostStatus)
