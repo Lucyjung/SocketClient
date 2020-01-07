@@ -71,7 +71,8 @@ namespace Receiver
                 config.emailSendTo = emailSendTo;
                 var targetExe = ConfigurationManager.AppSettings["targetExe"];
                 config.targetExe = targetExe;
-
+                var usePowerShell = ConfigurationManager.AppSettings["usePowerShell"];
+                config.usePowerShell = usePowerShell == "1";
             } catch (Exception ex)
             {
                 MessageBox.Show(ex.Message);
@@ -81,7 +82,25 @@ namespace Receiver
         private static void OnTimedEvent(Object source, System.Timers.ElapsedEventArgs e)
         {
             int port = config.portToCheck;
-            hostStatus = PingHost("localhost", port);
+            if (config.usePowerShell)
+            {
+                string cmdOutput = ExecutePowerShell(@"& Test-NetConnection 127.0.0.1 -PORT " + port);
+                string[] splited = cmdOutput.Replace("TcpTestSucceeded", "|").Split('|');
+                if (splited.Length > 0 && splited[1].Contains("True"))
+                {
+                    hostStatus = true;
+                }
+                else
+                {
+                    hostStatus = false;
+                }
+                
+            } else
+            {
+                hostStatus = PingHost("127.0.0.1", port);
+            }
+            
+            
             string hostname = Dns.GetHostName();
             
             if (hostStatus == false)
@@ -177,6 +196,22 @@ namespace Receiver
             process.WaitForExit();
 
             process.Close();
+        }
+        static string ExecutePowerShell(string command)
+        {
+            ProcessStartInfo startInfo = new ProcessStartInfo();
+            startInfo.FileName = @"powershell.exe";
+            startInfo.Arguments = command;
+            startInfo.RedirectStandardOutput = true;
+            startInfo.RedirectStandardError = true;
+            startInfo.UseShellExecute = false;
+            startInfo.CreateNoWindow = true;
+            Process process = new Process();
+            process.StartInfo = startInfo;
+            process.Start();
+
+            string output = process.StandardOutput.ReadToEnd();
+            return output;
         }
         public static bool PingHost(string hostUri, int portNumber)
         {
@@ -365,6 +400,7 @@ namespace Receiver
         public string batchFileName;
         public string emailSendTo;
         public string targetExe;
+        public bool usePowerShell;
     }
     public class LogData
     {
