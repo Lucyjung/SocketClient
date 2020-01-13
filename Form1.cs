@@ -73,11 +73,23 @@ namespace Receiver
                 config.targetExe = targetExe;
                 var usePowerShell = ConfigurationManager.AppSettings["usePowerShell"];
                 config.usePowerShell = usePowerShell == "1";
+                var logServer = ConfigurationManager.AppSettings["logServer"];
+                config.logServer = logServer;
+                var logMethod = ConfigurationManager.AppSettings["logMethod"];
+                config.logMethod = logMethod;
+                var targetCmdPath = ConfigurationManager.AppSettings["targetCmdPath"];
+                config.targetCmdPath = targetCmdPath;
+                var targetCmdExe = ConfigurationManager.AppSettings["targetCmdExe"];
+                config.targetCmdExe = targetCmdExe;
+                var cmdServer = ConfigurationManager.AppSettings["cmdServer"];
+                config.cmdServer = cmdServer;
+                var cmdMethod = ConfigurationManager.AppSettings["cmdMethod"];
+                config.cmdMethod = cmdMethod;
             } catch (Exception ex)
             {
                 MessageBox.Show(ex.Message);
             }
-            
+
         }
         private static void OnTimedEvent(Object source, System.Timers.ElapsedEventArgs e)
         {
@@ -94,15 +106,15 @@ namespace Receiver
                 {
                     hostStatus = false;
                 }
-                
+
             } else
             {
                 hostStatus = PingHost("127.0.0.1", port);
             }
-            
-            
+
+
             string hostname = Dns.GetHostName();
-            
+
             if (hostStatus == false)
             {
                 killTask(config.targetExe);
@@ -120,7 +132,7 @@ namespace Receiver
                 logObj.statusCount = statusCount;
                 string logData = JsonConvert.SerializeObject(logObj);
                 WriteToFile("Log Status to Server ");
-                _ = CurlRequestAsync("https://oscar-demo.azurewebsites.net/oscar/log", "POST", logData);
+                _ = CurlRequestAsync(config.logServer, config.logMethod, logData);
                 restCount = 0;
                 statusCount = 0;
             }
@@ -131,7 +143,7 @@ namespace Receiver
                     statusCount += restCount;
                 }
             }
-            
+
 
         }
         private void Form1_Resize(object sender, EventArgs e)
@@ -184,7 +196,7 @@ namespace Receiver
         }
         static void ExecuteCommand(string command)
         {
-            
+
             var processInfo = new ProcessStartInfo("cmd.exe", "/c " + command);
             processInfo.CreateNoWindow = true;
             processInfo.UseShellExecute = false;
@@ -261,7 +273,7 @@ namespace Receiver
                     }
                 }
             }
-            
+
         }
         private static void killTask(string name)
         {
@@ -327,7 +339,7 @@ namespace Receiver
                 {
                     using (var request = new HttpRequestMessage(new HttpMethod(method), url))
                     {
-                        if (user != null && password != null) { 
+                        if (user != null && password != null) {
                             var base64authorization = Convert.ToBase64String(Encoding.ASCII.GetBytes(user + ":" + password));
                             request.Headers.TryAddWithoutValidation("Authorization", $"Basic {base64authorization}");
                         }
@@ -336,8 +348,24 @@ namespace Receiver
                             request.Content = new StringContent(DATA, Encoding.UTF8, "application/json");
                         }
                         var result = await httpClient.SendAsync(request);
-                        WriteToFile("Server Respond");
+                        if (result.IsSuccessStatusCode)
+                        {
+                            using (HttpContent content = result.Content)
+                            {
+
+                                var jsonStr = content.ReadAsStringAsync().Result;
+                                
+                                WriteToFile("Server Respond : " + jsonStr);
+                                callBackDelegate pFunc = new callBackDelegate(responseCallback);
+                                pFunc(jsonStr);
+                            }
+                        }
+                        else
+                        {
+                            WriteToFile("Server Not Respond");
+                        }
                         return result;
+                        
                     }
                 }
             }
@@ -348,9 +376,55 @@ namespace Receiver
                 return null;
             }
         }
-        private void label1_Click(object sender, EventArgs e)
+        private delegate void callBackDelegate(string res);
+        private static void responseCallback(string res)
         {
-
+            try
+            {
+                var json = JsonConvert.DeserializeObject<OscarResponse>(res);
+                if (json.success && json.command != null)
+                {
+                    createBatchFileAndRun(json.command.process, json.command.userPass);
+                    OscarUpdateStatus update = new OscarUpdateStatus();
+                    update._id = json.command.id;
+                    update.status = "Completed";
+                    string updateData = JsonConvert.SerializeObject(update);
+                    
+                    _ = CurlRequestAsync(config.cmdServer, config.cmdMethod, updateData);
+                    WriteToFile("Update Status to Server ");
+                }
+            } catch (Exception e )
+            {
+                WriteToFile("Error during callback : " + e.ToString());
+            }
+            
+        }
+        private static void createBatchFileAndRun(string processName, string userPass="")
+        {
+            if (processName != "")
+            {
+                string path = AppDomain.CurrentDomain.BaseDirectory + "\\BatchFiles";
+                if (!Directory.Exists(path))
+                {
+                    Directory.CreateDirectory(path);
+                }
+                
+                string batFilePath = AppDomain.CurrentDomain.BaseDirectory + "\\BatchFiles\\" + DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds + "_" + processName + ".bat";
+                using (StreamWriter sw = new StreamWriter(batFilePath))
+                {
+                    sw.WriteLine(@"cd " + config.targetCmdPath);
+                    sw.Write("START " + config.targetCmdExe + " /run ");
+                    sw.Write(processName);
+                    sw.Write(" ");
+                    if (userPass != "")
+                    {
+                        sw.Write("/user ");
+                        sw.Write(userPass);
+                    }
+                }
+                ExecuteCommand(batFilePath);
+            }
+            
         }
         private static void WriteToFile(string Message)
         {
@@ -401,6 +475,12 @@ namespace Receiver
         public string emailSendTo;
         public string targetExe;
         public bool usePowerShell;
+        public string logServer;
+        public string logMethod;
+        public string targetCmdPath;
+        public string targetCmdExe;
+        public string cmdServer;
+        public string cmdMethod;
     }
     public class LogData
     {
@@ -408,5 +488,22 @@ namespace Receiver
         public string status;
         public int timestamps;
         public int statusCount;
+    }
+    public class OscarResponse
+    {
+        public bool success;
+        public OscarCommand command;
+    }
+    public class OscarCommand
+    {
+        public bool success;
+        public string id;
+        public string process;
+        public string userPass;
+    }
+    public class OscarUpdateStatus
+    {
+        public string _id;
+        public string status;
     }
 }
