@@ -412,6 +412,7 @@ namespace Receiver
                 string batFilePath = AppDomain.CurrentDomain.BaseDirectory + "\\BatchFiles\\" + DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds + "_" + processName + ".bat";
                 using (StreamWriter sw = new StreamWriter(batFilePath))
                 {
+                    sw.WriteLine(config.targetCmdPath[0].ToString() + config.targetCmdPath[1].ToString());
                     sw.WriteLine(@"cd " + config.targetCmdPath);
                     sw.Write("START " + config.targetCmdExe + " /run ");
                     sw.Write(processName);
