@@ -424,8 +424,8 @@ namespace Receiver
                     }
                     if (cmd.parameter != null)
                     {
-                        sw.WriteLine("");
-                        sw.WriteLine("/starttp " + cmd.parameter);
+                        sw.Write(" ");
+                        sw.Write("/startp " + cmd.parameter);
                     }
                 }
                 ExecuteCommand(batFilePath);
