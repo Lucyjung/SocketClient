@@ -232,7 +232,7 @@ namespace Receiver
                 using (var client = new TcpClient(hostUri, portNumber))
                     return true;
             }
-            catch (SocketException ex)
+            catch (SocketException)
             {
                 return false;
             }
@@ -384,7 +384,7 @@ namespace Receiver
                 var json = JsonConvert.DeserializeObject<OscarResponse>(res);
                 if (json.success && json.command != null)
                 {
-                    createBatchFileAndRun(json.command.process, json.command.userPass);
+                    createBatchFileAndRun(json.command);
                     OscarUpdateStatus update = new OscarUpdateStatus();
                     update._id = json.command.id;
                     update.status = "Completed";
@@ -399,9 +399,9 @@ namespace Receiver
             }
             
         }
-        private static void createBatchFileAndRun(string processName, string userPass="")
+        private static void createBatchFileAndRun(OscarCommand cmd)
         {
-            if (processName != "")
+            if (cmd.process != "")
             {
                 string path = AppDomain.CurrentDomain.BaseDirectory + "\\BatchFiles";
                 if (!Directory.Exists(path))
@@ -409,18 +409,23 @@ namespace Receiver
                     Directory.CreateDirectory(path);
                 }
                 
-                string batFilePath = AppDomain.CurrentDomain.BaseDirectory + "\\BatchFiles\\" + DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds + "_" + processName + ".bat";
+                string batFilePath = AppDomain.CurrentDomain.BaseDirectory + "\\BatchFiles\\" + DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds + "_" + cmd.process + ".bat";
                 using (StreamWriter sw = new StreamWriter(batFilePath))
                 {
                     sw.WriteLine(config.targetCmdPath[0].ToString() + config.targetCmdPath[1].ToString());
                     sw.WriteLine(@"cd " + config.targetCmdPath);
                     sw.Write("START " + config.targetCmdExe + " /run ");
-                    sw.Write(processName);
+                    sw.Write(cmd.process);
                     sw.Write(" ");
-                    if (userPass != "")
+                    if (cmd.userPass != null)
                     {
                         sw.Write("/user ");
-                        sw.Write(userPass);
+                        sw.Write(cmd.userPass);
+                    }
+                    if (cmd.parameter != null)
+                    {
+                        sw.WriteLine("");
+                        sw.WriteLine("/starttp " + cmd.parameter);
                     }
                 }
                 ExecuteCommand(batFilePath);
@@ -501,6 +506,7 @@ namespace Receiver
         public string id;
         public string process;
         public string userPass;
+        public string parameter;
     }
     public class OscarUpdateStatus
     {
