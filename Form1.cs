@@ -21,6 +21,9 @@ namespace Receiver
         private static Config config = new Config();
         private static int restCount = 0;
         private static int statusCount = 0;
+        static PerformanceCounter cpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
+        static PerformanceCounter  ramCounter = new PerformanceCounter("Memory", "% Committed Bytes In Use", null);
+        static PerformanceCounter diskCounter = new PerformanceCounter("PhysicalDisk", "% Disk Time", "_Total");
         public Form1()
         {
             InitializeComponent();
@@ -125,11 +128,15 @@ namespace Receiver
             // StartClient(hostname + "," + port.ToString() + ","+ hostStatus.ToString() + "<EOF>");
             if (restCount >= 12)
             {
+                float[] perf = getPerformaceCounter();
                 LogData logObj = new LogData();
                 logObj.hostName = hostname;
                 logObj.status = hostStatus.ToString();
                 logObj.timestamps = (Int32)(DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1))).TotalSeconds;
                 logObj.statusCount = statusCount;
+                logObj.cpuUsage = perf[0];
+                logObj.ramUsage = perf[1];
+                logObj.diskUsage = perf[2];
                 string logData = JsonConvert.SerializeObject(logObj);
                 WriteToFile("Log Status to Server ");
                 _ = CurlRequestAsync(config.logServer, config.logMethod, logData);
@@ -432,6 +439,24 @@ namespace Receiver
             }
             
         }
+        public static float[] getPerformaceCounter()
+        {
+
+            // will always start at 0
+            dynamic firstValue1 = cpuCounter.NextValue();
+            firstValue1 = ramCounter.NextValue();
+            firstValue1 = diskCounter.NextValue();
+            System.Threading.Thread.Sleep(500);
+            // now matches task manager reading
+
+            System.Collections.Generic.List<float> val = new System.Collections.Generic.List<float>();
+            val.Add(cpuCounter.NextValue());
+            val.Add(ramCounter.NextValue());
+            val.Add(diskCounter.NextValue());
+
+            return val.ToArray();
+
+        }
         private static void WriteToFile(string Message)
         {
             string path = AppDomain.CurrentDomain.BaseDirectory + "\\Logs";
@@ -494,6 +519,9 @@ namespace Receiver
         public string status;
         public int timestamps;
         public int statusCount;
+        public float cpuUsage;
+        public float ramUsage;
+        public float diskUsage;
     }
     public class OscarResponse
     {
