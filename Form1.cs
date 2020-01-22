@@ -9,6 +9,8 @@ using System.Net.Sockets;
 using System.IO;
 using Newtonsoft.Json;
 using System.Net.Http;
+using System.Collections.Generic;
+using System.Reflection;
 
 namespace Receiver
 {
@@ -24,6 +26,7 @@ namespace Receiver
         static PerformanceCounter cpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
         static PerformanceCounter  ramCounter = new PerformanceCounter("Memory", "% Committed Bytes In Use", null);
         static PerformanceCounter diskCounter = new PerformanceCounter("PhysicalDisk", "% Disk Time", "_Total");
+        static List<PerformanceCounter> subCpus = new List<PerformanceCounter>();
         public Form1()
         {
             InitializeComponent();
@@ -51,7 +54,11 @@ namespace Receiver
             button1.Text = APP_STATE[1];
             //ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls12;
 
-
+            for (int i = 0;i < config.subCpu; i++)
+            {
+                PerformanceCounter perfCnt = new PerformanceCounter("Processor", "% Processor Time", i.ToString()) ;
+                subCpus.Add(perfCnt);
+            }
 
         }
         public static void GetConfigurationValue()
@@ -88,6 +95,9 @@ namespace Receiver
                 config.cmdServer = cmdServer;
                 var cmdMethod = ConfigurationManager.AppSettings["cmdMethod"];
                 config.cmdMethod = cmdMethod;
+                var subCpu = ConfigurationManager.AppSettings["subCpu"];
+                config.subCpu = subCpu != null ?Int32.Parse(subCpu): 0;
+                config.subCpu = config.subCpu > Environment.ProcessorCount ? Environment.ProcessorCount : config.subCpu;
             } catch (Exception ex)
             {
                 MessageBox.Show(ex.Message);
@@ -137,7 +147,18 @@ namespace Receiver
                 logObj.cpuUsage = perf[0];
                 logObj.ramUsage = perf[1];
                 logObj.diskUsage = perf[2];
-                string logData = JsonConvert.SerializeObject(logObj);
+                for (int i = 3; i < perf.Length; i++)
+                {
+                    PropertyInfo propertyInfo = logObj.GetType().GetProperty("cpu" + (i-2).ToString());
+                    var t = typeof(float?);
+                    t = Nullable.GetUnderlyingType(t);
+                    propertyInfo.SetValue(logObj, Convert.ChangeType(perf[i], t), null);
+                }
+                string logData = JsonConvert.SerializeObject(logObj, Newtonsoft.Json.Formatting.None,
+                            new JsonSerializerSettings
+                            {
+                                NullValueHandling = NullValueHandling.Ignore
+                            });
                 WriteToFile("Log Status to Server ");
                 _ = CurlRequestAsync(config.logServer, config.logMethod, logData);
                 restCount = 0;
@@ -443,17 +464,24 @@ namespace Receiver
         {
 
             // will always start at 0
-            dynamic firstValue1 = cpuCounter.NextValue();
-            firstValue1 = ramCounter.NextValue();
-            firstValue1 = diskCounter.NextValue();
+            _ = cpuCounter.NextValue();
+            _ = ramCounter.NextValue();
+            _ = diskCounter.NextValue();
+            foreach (var subCpu in subCpus)
+            {
+                _ = subCpu.NextValue();
+            }
             System.Threading.Thread.Sleep(500);
             // now matches task manager reading
 
-            System.Collections.Generic.List<float> val = new System.Collections.Generic.List<float>();
+            List<float> val = new List<float>();
             val.Add(cpuCounter.NextValue());
             val.Add(ramCounter.NextValue());
             val.Add(diskCounter.NextValue());
-
+            foreach (var subCpu in subCpus)
+            {
+                val.Add(subCpu.NextValue());
+            }
             return val.ToArray();
 
         }
@@ -512,16 +540,33 @@ namespace Receiver
         public string targetCmdExe;
         public string cmdServer;
         public string cmdMethod;
+        public int subCpu;
     }
     public class LogData
     {
-        public string hostName;
-        public string status;
-        public int timestamps;
-        public int statusCount;
-        public float cpuUsage;
-        public float ramUsage;
-        public float diskUsage;
+        public string hostName { get; set; }
+        public string status { get; set; }
+        public int timestamps { get; set; }
+        public int statusCount { get; set; }
+        public float cpuUsage { get; set; }
+        public float ramUsage { get; set; }
+        public float diskUsage { get; set; }
+        public float? cpu1 { get; set; }
+        public float? cpu2 { get; set; }
+        public float? cpu3 { get; set; }
+        public float? cpu4 { get; set; }
+        public float? cpu5 { get; set; }
+        public float? cpu6 { get; set; }
+        public float? cpu7 { get; set; }
+        public float? cpu8 { get; set; }
+        public float? cpu9 { get; set; }
+        public float? cpu10 { get; set; }
+        public float? cpu11 { get; set; }
+        public float? cpu12 { get; set; }
+        public float? cpu13 { get; set; }
+        public float? cpu14 { get; set; }
+        public float? cpu15 { get; set; }
+        public float? cpu16 { get; set; }
     }
     public class OscarResponse
     {

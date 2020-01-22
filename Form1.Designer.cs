@@ -52,7 +52,7 @@
             this.label1.Name = "label1";
             this.label1.Size = new System.Drawing.Size(69, 13);
             this.label1.TabIndex = 1;
-            this.label1.Text = "Version 4.8.5";
+            this.label1.Text = "Version 4.8.6";
             // 
             // notifyIcon1
             // 
