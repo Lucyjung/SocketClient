@@ -22,6 +22,7 @@ namespace Receiver
         private static string[] APP_STATE = { "Start", "Running" };
         private static Config config = new Config();
         private static int restCount = 0;
+        private static int failedCount = 0;
         private static int statusCount = 0;
         static PerformanceCounter cpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
         static PerformanceCounter  ramCounter = new PerformanceCounter("Memory", "% Committed Bytes In Use", null);
@@ -98,6 +99,8 @@ namespace Receiver
                 var subCpu = ConfigurationManager.AppSettings["subCpu"];
                 config.subCpu = subCpu != null ?Int32.Parse(subCpu): 0;
                 config.subCpu = config.subCpu > Environment.ProcessorCount ? Environment.ProcessorCount : config.subCpu;
+                var restartThreshold = ConfigurationManager.AppSettings["restartThreshold"];
+                config.restartThreshold = restartThreshold != null ? Int32.Parse(restartThreshold) : 0;
             } catch (Exception ex)
             {
                 MessageBox.Show(ex.Message);
@@ -128,11 +131,18 @@ namespace Receiver
 
             string hostname = Dns.GetHostName();
 
-            if (hostStatus == false)
+            if (hostStatus == false )
             {
-                killTask(config.targetExe);
-                ExecuteCommand(config.batchFileName);
-                // sendEmail(config.emailSendTo, "test sbuject", "test body");
+                failedCount++;
+                if (failedCount >= config.restartThreshold)
+                {
+                    killTask(config.targetExe);
+                    ExecuteCommand(config.batchFileName);
+                    // sendEmail(config.emailSendTo, "test sbuject", "test body");
+                }
+            } else
+            {
+                failedCount = 0;
             }
             WriteToFile("Check Status : " + hostStatus.ToString());
             // StartClient(hostname + "," + port.ToString() + ","+ hostStatus.ToString() + "<EOF>");
@@ -541,6 +551,7 @@ namespace Receiver
         public string cmdServer;
         public string cmdMethod;
         public int subCpu;
+        public int restartThreshold;
     }
     public class LogData
     {
