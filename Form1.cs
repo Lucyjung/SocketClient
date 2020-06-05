@@ -11,7 +11,7 @@ using Newtonsoft.Json;
 using System.Net.Http;
 using System.Collections.Generic;
 using System.Reflection;
-
+using System.Data.SqlClient;
 namespace Receiver
 {
     public partial class Form1 : Form
@@ -28,6 +28,18 @@ namespace Receiver
         static PerformanceCounter  ramCounter = new PerformanceCounter("Memory", "% Committed Bytes In Use", null);
         static PerformanceCounter diskCounter = new PerformanceCounter("PhysicalDisk", "% Disk Time", "_Total");
         static List<PerformanceCounter> subCpus = new List<PerformanceCounter>();
+        enum BPStatus
+        {
+            Pending = 1,
+            Running,
+            Terminated,
+            Stopped,
+            Completed,
+            Debugging,
+            Archived,
+            Stopping,
+            Warning
+        }
         public Form1()
         {
             InitializeComponent();
@@ -99,6 +111,8 @@ namespace Receiver
                 var subCpu = ConfigurationManager.AppSettings["subCpu"];
                 config.subCpu = subCpu != null ?Int32.Parse(subCpu): 0;
                 config.subCpu = config.subCpu > Environment.ProcessorCount ? Environment.ProcessorCount : config.subCpu;
+                var conString = ConfigurationManager.AppSettings["connectionString"];
+                config.conString = conString != null ? Base64Decode(conString) : null;
                 var restartThreshold = ConfigurationManager.AppSettings["restartThreshold"];
                 config.restartThreshold = restartThreshold != null ? Int32.Parse(restartThreshold) : 0;
             } catch (Exception ex)
@@ -129,22 +143,29 @@ namespace Receiver
             }
 
 
-            string hostname = Dns.GetHostName();
-
+            string hostname = Dns.GetHostEntry("").HostName;
+            
             if (hostStatus == false )
             {
+                int status = checkSession(hostname);
                 failedCount++;
-                if (failedCount >= config.restartThreshold)
+                if (
+                    (failedCount >= config.restartThreshold && (status <= (int)BPStatus.Running || status == (int)BPStatus.Warning)) || 
+                    ((status > (int)BPStatus.Running) && (status < (int)BPStatus.Warning))
+                    )
                 {
                     killTask(config.targetExe);
                     ExecuteCommand(config.batchFileName);
-                    // sendEmail(config.emailSendTo, "test sbuject", "test body");
-                }
+                } 
+                WriteToFile("Check Status : " + hostStatus.ToString() + " (Session Status = " + status + ")");
+
             } else
             {
                 failedCount = 0;
+                WriteToFile("Check Status : " + hostStatus.ToString());
             }
-            WriteToFile("Check Status : " + hostStatus.ToString());
+            
+
             // StartClient(hostname + "," + port.ToString() + ","+ hostStatus.ToString() + "<EOF>");
             if (restCount >= 12)
             {
@@ -519,6 +540,60 @@ namespace Receiver
                 }
             }
         }
+        private static int checkSession(string hostName)
+        {
+            string connetionString;
+            SqlConnection connection;
+            SqlCommand command;
+            string sql;
+            SqlDataReader dataReader;
+            int status = 0;
+
+            if (config.conString != null)
+            {
+                connetionString = config.conString;
+                sql = @"SELECT TOP (1) [sessionid]
+                  ,[processid]
+                  ,[statusid]
+                  ,[BPASession].[lastupdated]
+                  ,[laststage]
+	              ,[BPAResource].FQDN
+                    FROM [dbo].[BPASession] 
+                    inner join [BPAResource] on starterresourceid  = [BPAResource].[resourceid]
+                    where FQDN = '" + hostName + @"'
+                    order by [BPASession].[lastupdated] DESC";
+
+                connection = new SqlConnection(connetionString);
+                try
+                {
+                    connection.Open();
+                    command = new SqlCommand(sql, connection);
+                    dataReader = command.ExecuteReader();
+                    while (dataReader.Read())
+                    {
+                        status = Int32.Parse(dataReader.GetValue(2).ToString());
+                    }
+                    command.Dispose();
+                    connection.Close();
+                }
+                catch (Exception ex)
+                {
+                    WriteToFile("Error sql : " + ex.ToString());
+                }
+            }
+            
+            return status;
+        }
+        private static string Base64Encode(string plainText)
+        {
+            var plainTextBytes = System.Text.Encoding.UTF8.GetBytes(plainText);
+            return System.Convert.ToBase64String(plainTextBytes);
+        }
+        private static string Base64Decode(string base64EncodedData)
+        {
+            var base64EncodedBytes = System.Convert.FromBase64String(base64EncodedData);
+            return System.Text.Encoding.UTF8.GetString(base64EncodedBytes);
+        }
     }
     // State object for receiving data from remote device.  
     public class StateObject
@@ -551,6 +626,7 @@ namespace Receiver
         public string cmdServer;
         public string cmdMethod;
         public int subCpu;
+        public string conString;
         public int restartThreshold;
     }
     public class LogData
