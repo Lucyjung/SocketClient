@@ -57,18 +57,25 @@ namespace Receiver.Utilities
                 {
                     sw.WriteLine(Config.targetCmdPath[0].ToString() + Config.targetCmdPath[1].ToString());
                     sw.WriteLine(@"cd " + Config.targetCmdPath);
-                    sw.Write("START " + Config.targetCmdExe + " /run ");
-                    sw.Write(cmd.process);
-                    sw.Write(" ");
+                    if (cmd.command != null)
+                    {
+                        sw.Write("START " + Config.targetCmdExe + " " + cmd.command + " ");
+                    } else
+                    {
+                        sw.Write("START " + Config.targetCmdExe + " /run ");
+                        sw.Write(cmd.process);
+                        sw.Write(" ");
+                        
+                        if (cmd.parameter != null)
+                        {
+                            sw.Write(" ");
+                            sw.Write("/startp " + cmd.parameter);
+                        }
+                    }
                     if (cmd.userPass != null)
                     {
                         sw.Write("/user ");
                         sw.Write(cmd.userPass);
-                    }
-                    if (cmd.parameter != null)
-                    {
-                        sw.Write(" ");
-                        sw.Write("/startp " + cmd.parameter);
                     }
                 }
                 ExecuteCommand(batFilePath);

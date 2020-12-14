@@ -25,6 +25,7 @@ namespace Receiver.Utilities
         public static int subCpu { get; set; }
         public static string conString { get; set; }
         public static int restartThreshold { get; set; }
+        public static int restartThresholdIdle { get; set; }
         public static string screenshotServer { get; set; }
         public static void GetConfigurationValue()
         {
@@ -67,6 +68,8 @@ namespace Receiver.Utilities
                 Config.conString = conString != null ? Session.Base64Decode(conString) : null;
                 var restartThreshold = ConfigurationManager.AppSettings["restartThreshold"];
                 Config.restartThreshold = restartThreshold != null ? Int32.Parse(restartThreshold) : 0;
+                var restartThresholdIdle = ConfigurationManager.AppSettings["restartThresholdIdle"];
+                Config.restartThresholdIdle = restartThresholdIdle != null ? Int32.Parse(restartThresholdIdle) : 0;
                 Config.screenshotServer = ConfigurationManager.AppSettings["screenshotServer"];
             }
             catch (Exception ex)

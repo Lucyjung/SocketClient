@@ -38,6 +38,7 @@
         public string process;
         public string userPass;
         public string parameter;
+        public string command;
     }
     public class OscarUpdateStatus
     {

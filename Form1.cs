@@ -6,7 +6,8 @@ using Newtonsoft.Json;
 using System.Reflection;
 using Receiver.Utilities;
 using Receiver.Data;
-
+using Microsoft.Win32;
+using Excel = Microsoft.Office.Interop.Excel;
 namespace Receiver
 {
     public partial class Form1 : Form
@@ -48,12 +49,7 @@ namespace Receiver
             // Have the timer fire repeated events (true is the default)
             aTimer.AutoReset = true;
             LogFile.WriteToFile("Start Oscar");
-            Process[] pname = Process.GetProcessesByName(Config.targetExe);
-            if (pname.Length == 0)
-            {
-                LogFile.WriteToFile("Execute First Command");
-                Command.ExecuteCommand(Config.batchFileName);
-            }
+            prepareEnvironment();
 
             // Start the timer
             aTimer.Enabled = true;
@@ -67,7 +63,33 @@ namespace Receiver
             }
             
         }
-        
+        private static void prepareEnvironment()
+        {
+            string keyName = @"Software\Microsoft\Office\16.0\Excel";
+            Registry.CurrentUser.DeleteSubKeyTree(keyName, false);
+            Excel.Application app = new Excel.Application();
+            System.Runtime.InteropServices.Marshal.ReleaseComObject(app);
+            keyName = @"Software\Microsoft\Office\16.0\Excel\Security";
+
+            using (RegistryKey security = Registry.CurrentUser.CreateSubKey(keyName))
+            {
+                // Create data for the TestSettings subkey.
+                security.SetValue("VBAWarnings", 1);
+                string protectKey = @"Software\Microsoft\Office\16.0\Excel\Security\ProtectedView";
+                using (RegistryKey protect = Registry.CurrentUser.CreateSubKey(protectKey))
+                {
+                    protect.SetValue("DisableAttachmentsInPV",1);
+                    protect.SetValue("DisableInternetFilesInPV", 1);
+                    protect.SetValue("DisableUnsafeLocationsInPV", 1);
+                }
+            }
+            Process[] pname = Process.GetProcessesByName(Config.targetExe);
+            if (pname.Length == 0)
+            {
+                LogFile.WriteToFile("Execute First Command");
+                Command.ExecuteCommand(Config.batchFileName);
+            }
+        }
         private static void OnTimedEvent(Object source, System.Timers.ElapsedEventArgs e)
         {
             int port = Config.portToCheck;
@@ -98,7 +120,7 @@ namespace Receiver
                 failedCount++;
                 if (
                     (failedCount >= Config.restartThreshold && (status <= (int)BPStatus.Running || status == (int)BPStatus.Warning)) || 
-                    ((status > (int)BPStatus.Running) && (status < (int)BPStatus.Warning))
+                    (failedCount >= Config.restartThresholdIdle && (status > (int)BPStatus.Running) && (status < (int)BPStatus.Warning))
                     )
                 {
                     Command.killTask(Config.targetExe);
